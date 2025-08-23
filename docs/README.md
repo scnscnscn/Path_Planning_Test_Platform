@@ -30,4 +30,11 @@ This platform provides:
 - Performance testing and validation tools
 - Comprehensive testing suite for algorithm comparison
 
+### Included Planners
+
+- **[nav2_astar_planner](../src/nav2_astar_planner/)** - A* algorithm implementation with configurable heuristics
+  - Supports 8-directional grid search
+  - Configurable parameters for performance tuning
+  - Comprehensive documentation and examples
+
 For detailed contribution guidelines, see the [Development Guide](development/).

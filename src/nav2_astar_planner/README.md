@@ -88,6 +88,7 @@ nav_msgs::msg::Path createPlan(
 3. 初始化开放集合、封闭集合和代价映射
 4. A* 主循环搜索
 5. 路径重构和坐标转换（网格坐标 → 世界坐标）
+6. 路径平滑处理（移除共线点优化路径）
 
 #### 辅助功能函数
 
@@ -96,6 +97,7 @@ nav_msgs::msg::Path createPlan(
 - `getNeighbors()`: 获取当前节点的8个邻居
 - `getMoveCost()`: 计算移动代价（考虑对角线移动）
 - `worldToGrid()` / `gridToWorld()`: 坐标系转换
+- `smoothPath()`: 路径平滑处理，移除共线点优化路径
 
 ### 数据结构设计
 
@@ -112,6 +114,25 @@ AStarPlanner
 ├── tf2_ros::Buffer (坐标变换)
 └── rclcpp_lifecycle::LifecycleNode (ROS2 节点)
 ```
+
+### 路径平滑
+
+算法包含路径平滑功能，通过移除共线点来优化最终路径：
+
+```cpp
+// 路径平滑算法
+nav_msgs::msg::Path smoothPath(const nav_msgs::msg::Path& raw_path) const;
+```
+
+**平滑策略**:
+- 检测三个连续点的叉积
+- 移除共线点（叉积接近零的点）
+- 保留起点和终点
+- 减少路径点数量，提高执行效率
+
+**数学原理**:
+使用叉积检测共线性：`cross = (c.x - p.x) * (n.y - c.y) - (c.y - p.y) * (n.x - c.x)`
+当 |cross| < ε 时，认为三点共线并移除中间点。
 
 ## 配置参数
 
@@ -195,6 +216,7 @@ ros2 launch your_navigation_package navigation_launch.py
 1. 使用高效的数据结构（优先队列、哈希集合）
 2. 早期终止条件检查
 3. 内存池优化（可选）
+4. 路径平滑减少执行点数
 
 ## 与其他规划器对比
 
