@@ -223,9 +223,10 @@ namespace nav2_astar_planner
     {
       return false;  // 致命障碍物
     }
-    if (!allow_unknown_ && cost == nav2_costmap_2d::NO_INFORMATION)
+    if (cost == nav2_costmap_2d::NO_INFORMATION)
     {
-      return false;  // 未知区域且不允许通过
+      // 未知区域
+      return allow_unknown_;
     }
     if (cost > cost_threshold_)
     {
