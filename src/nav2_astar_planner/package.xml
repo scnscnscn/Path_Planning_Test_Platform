@@ -3,9 +3,9 @@
 <package format="3">
   <name>nav2_astar_planner</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>ROS 2 package implementing an A* global planner for navigation.</description>
   <maintainer email="727265958@qq.com">nerv</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

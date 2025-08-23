@@ -27,14 +27,11 @@ namespace nav2_astar_planner
     nav2_util::declare_parameter_if_not_declared(
         node_, planner_name_ + ".allow_unknown", rclcpp::ParameterValue(false));
     nav2_util::declare_parameter_if_not_declared(
-        node_, planner_name_ + ".inflation_radius", rclcpp::ParameterValue(0.2));
-    nav2_util::declare_parameter_if_not_declared(
         node_, planner_name_ + ".cost_threshold", rclcpp::ParameterValue(250));
 
     // 获取参数
     node_->get_parameter(planner_name_ + ".heuristic_weight", heuristic_weight_);
     node_->get_parameter(planner_name_ + ".allow_unknown", allow_unknown_);
-    node_->get_parameter(planner_name_ + ".inflation_radius", inflation_radius_);
 
     int temp_threshold;
     node_->get_parameter(planner_name_ + ".cost_threshold", temp_threshold);
@@ -44,9 +41,9 @@ namespace nav2_astar_planner
         logger_,
         "Configured A* planner with parameters: "
         "heuristic_weight=%.2f, allow_unknown=%s, "
-        "inflation_radius=%.2f, cost_threshold=%d",
+        "cost_threshold=%d",
         heuristic_weight_, allow_unknown_ ? "true" : "false",
-        inflation_radius_, static_cast<int>(cost_threshold_));
+        static_cast<int>(cost_threshold_));
   }
 
   void AStarPlanner::cleanup()
