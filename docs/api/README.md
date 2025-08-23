@@ -4,6 +4,10 @@ This directory contains detailed API documentation for the Path Planning Test Pl
 
 ## Path Planners API
 
+### A* Global Planner
+
+**[A* Global Planner](astar_planner.md)** - Custom A* implementation for global path planning with configurable heuristics and obstacle avoidance.
+
 ### Base Planner Interface
 
 All custom planners should inherit from the base planner interface and implement the following core methods:

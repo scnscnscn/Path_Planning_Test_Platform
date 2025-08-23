@@ -66,6 +66,8 @@ ament_export_dependencies(
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
+  
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
@@ -73,6 +75,25 @@ if(BUILD_TESTING)
   # comment the line when this package is in a git repo and when
   # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
+  
+  # Add unit tests
+  ament_add_gtest(test_astar_planner_unit
+    ../test/test_astar_planner.cpp
+  )
+  
+  if(TARGET test_astar_planner_unit)
+    target_link_libraries(test_astar_planner_unit
+      ${PROJECT_NAME}_plugin
+    )
+    ament_target_dependencies(test_astar_planner_unit
+      rclcpp
+      nav2_core
+      nav2_costmap_2d
+      geometry_msgs
+      nav_msgs
+    )
+  endif()
+  
   ament_lint_auto_find_test_dependencies()
 endif()
 

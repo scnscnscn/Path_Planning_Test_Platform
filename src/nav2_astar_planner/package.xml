@@ -4,7 +4,7 @@
   <name>nav2_astar_planner</name>
   <version>0.0.0</version>
   <description>ROS 2 package implementing an A* global planner for navigation.</description>
-  <maintainer email="727265958@qq.com">nerv</maintainer>
+  <maintainer email="WLQVincent@gmail.com">scnscnscn</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
