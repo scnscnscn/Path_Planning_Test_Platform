@@ -18,15 +18,6 @@
   <depend>nav_msgs</depend>
   <depend>nav2_util</depend>
 
-  <exec_depend>rclcpp</exec_depend>
-  <exec_depend>rclcpp_lifecycle</exec_depend>
-  <exec_depend>nav2_core</exec_depend>
-  <exec_depend>nav2_costmap_2d</exec_depend>
-  <exec_depend>pluginlib</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>nav_msgs</exec_depend>
-  <exec_depend>nav2_util</exec_depend>
-
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

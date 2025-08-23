@@ -1,282 +1,314 @@
-#include "nav2_astar_planner/astar_planner.hpp"
-#include "pluginlib/class_list_macros.hpp"  // 插件导出宏
+#include "nav2_util/node_utils.hpp"
+#include "nav2_costmap_2d/cost_values.hpp"
+#include "pluginlib/class_list_macros.hpp"
+#include <algorithm>
+#include "../include/nav2_astar_planner/astar_planner.hpp"
 
 namespace nav2_astar_planner
 {
 
-  // -------------------------- 1. 实现configure()：初始化参数与代价地图 --------------------------
   void AStarPlanner::configure(
       const rclcpp_lifecycle::LifecycleNode::WeakPtr& parent,
       std::string name,
       std::shared_ptr<tf2_ros::Buffer> tf,
       std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
   {
-    // 初始化成员变量
     node_ = parent.lock();
     planner_name_ = name;
+    tf_ = tf;
     costmap_ros_ = costmap_ros;
-    costmap_ = costmap_ros->getCostmap();             // 获取代价地图核心对象
-    global_frame_ = costmap_ros->getGlobalFrameID();  // 全局坐标系（如"map"）
+    costmap_ = costmap_ros_->getCostmap();
+    global_frame_ = costmap_ros_->getGlobalFrameID();
+    clock_ = node_->get_clock();
 
-    // -------------------------- 从ROS参数服务器读取A*参数 --------------------------
-    // 1. 启发函数权重（默认1.0，权重越大越偏向贪心，权重越小越偏向Dijkstra）
+    // 声明参数
     nav2_util::declare_parameter_if_not_declared(
         node_, planner_name_ + ".heuristic_weight", rclcpp::ParameterValue(1.0));
-    node_->get_parameter(planner_name_ + ".heuristic_weight", heuristic_weight_);
-
-    // 2. 是否允许经过未知区域（默认false，未知区域代价为255）
     nav2_util::declare_parameter_if_not_declared(
         node_, planner_name_ + ".allow_unknown", rclcpp::ParameterValue(false));
-    node_->get_parameter(planner_name_ + ".allow_unknown", allow_unknown_);
-
-    // 3. 障碍物膨胀半径（默认0.2m，需与代价地图膨胀参数一致）
     nav2_util::declare_parameter_if_not_declared(
         node_, planner_name_ + ".inflation_radius", rclcpp::ParameterValue(0.2));
-    node_->get_parameter(planner_name_ + ".inflation_radius", inflation_radius_);
-
-    // 4. 代价阈值（超过则视为障碍物，默认250；255为未知区域）
     nav2_util::declare_parameter_if_not_declared(
         node_, planner_name_ + ".cost_threshold", rclcpp::ParameterValue(250));
-    node_->get_parameter(planner_name_ + ".cost_threshold", cost_threshold_);
 
-    RCLCPP_INFO(node_->get_logger(), "A* Planner configured successfully!");
+    // 获取参数
+    node_->get_parameter(planner_name_ + ".heuristic_weight", heuristic_weight_);
+    node_->get_parameter(planner_name_ + ".allow_unknown", allow_unknown_);
+    node_->get_parameter(planner_name_ + ".inflation_radius", inflation_radius_);
+
+    int temp_threshold;
+    node_->get_parameter(planner_name_ + ".cost_threshold", temp_threshold);
+    cost_threshold_ = static_cast<unsigned char>(std::min(255, std::max(0, temp_threshold)));
+
+    RCLCPP_INFO(
+        logger_,
+        "Configured A* planner with parameters: "
+        "heuristic_weight=%.2f, allow_unknown=%s, "
+        "inflation_radius=%.2f, cost_threshold=%d",
+        heuristic_weight_, allow_unknown_ ? "true" : "false",
+        inflation_radius_, static_cast<int>(cost_threshold_));
   }
 
-  // -------------------------- 2. 实现启发函数：欧几里得距离 --------------------------
-  double AStarPlanner::calculateHeuristic(int x1, int y1, int x2, int y2)
+  void AStarPlanner::cleanup()
   {
-    // 网格分辨率（米/格子）：代价地图每个格子的实际尺寸
-    double resolution = costmap_->getResolution();
-    // 世界坐标下的欧几里得距离 = 网格距离 * 分辨率 * 权重
-    double dx = (x2 - x1) * resolution;
-    double dy = (y2 - y1) * resolution;
-    return heuristic_weight_ * std::hypot(dx, dy);
+    RCLCPP_INFO(logger_, "Cleaning up A* planner");
   }
 
-  // -------------------------- 3. 实现节点合法性检查 --------------------------
-  bool AStarPlanner::isNodeValid(int x, int y, std::unordered_map<std::string, bool>& closed_set)
+  void AStarPlanner::activate()
   {
-    // 1. 检查是否在地图边界内（x：列数，y：行数）
-    if (x < 0 || x >= costmap_->getSizeInCellsX() || y < 0 || y >= costmap_->getSizeInCellsY())
+    RCLCPP_INFO(logger_, "Activating A* planner");
+  }
+
+  void AStarPlanner::deactivate()
+  {
+    RCLCPP_INFO(logger_, "Deactivating A* planner");
+  }
+
+  nav_msgs::msg::Path AStarPlanner::createPlan(
+      const geometry_msgs::msg::PoseStamped& start,
+      const geometry_msgs::msg::PoseStamped& goal)
+  {
+    nav_msgs::msg::Path path;
+    path.header.frame_id = global_frame_;
+    path.header.stamp = node_->now();
+
+    // 检查坐标系是否一致
+    if (start.header.frame_id != global_frame_ || goal.header.frame_id != global_frame_)
+    {
+      RCLCPP_ERROR(
+          logger_,
+          "Start and goal must be in global frame (%s), but got start=%s, goal=%s",
+          global_frame_.c_str(), start.header.frame_id.c_str(), goal.header.frame_id.c_str());
+      return path;
+    }
+
+    // 转换为网格坐标
+    int start_x, start_y, goal_x, goal_y;
+    if (!worldToGrid(start, start_x, start_y) || !worldToGrid(goal, goal_x, goal_y))
+    {
+      RCLCPP_ERROR(logger_, "Start or goal is outside costmap bounds");
+      return path;
+    }
+
+    // 检查起点和终点有效性
+    std::unordered_set<std::pair<int, int>, CoordHash> dummy_closed;
+    if (!isNodeValid(start_x, start_y, dummy_closed))
+    {
+      RCLCPP_ERROR(logger_, "Start position is invalid (obstacle or out of bounds)");
+      return path;
+    }
+    if (!isNodeValid(goal_x, goal_y, dummy_closed))
+    {
+      RCLCPP_ERROR(logger_, "Goal position is invalid (obstacle or out of bounds)");
+      return path;
+    }
+
+    // A*算法初始化
+    using NodePtr = std::shared_ptr<AStarNode>;
+    std::priority_queue<NodePtr, std::vector<NodePtr>, std::greater<NodePtr>> open_set;
+    std::unordered_set<std::pair<int, int>, CoordHash> closed_set;
+    std::unordered_map<std::pair<int, int>, double, CoordHash> g_costs;
+
+    // 起点入队
+    auto start_node = std::make_shared<AStarNode>(
+        start_x, start_y, 0.0,
+        calculateHeuristic(start_x, start_y, goal_x, goal_y));
+    open_set.push(start_node);
+    g_costs[{start_x, start_y}] = 0.0;
+
+    NodePtr goal_node = nullptr;
+
+    // A*主循环
+    while (!open_set.empty())
+    {
+      auto current = open_set.top();
+      open_set.pop();
+      std::pair<int, int> current_coord = {current->x, current->y};
+
+      // 已到达目标
+      if (current->x == goal_x && current->y == goal_y)
+      {
+        goal_node = current;
+        break;
+      }
+
+      // 已处理过该节点
+      if (closed_set.count(current_coord))
+      {
+        continue;
+      }
+      closed_set.insert(current_coord);
+
+      // 遍历邻居
+      for (const auto& neighbor : getNeighbors(current->x, current->y))
+      {
+        int nx = neighbor.first;
+        int ny = neighbor.second;
+        std::pair<int, int> neighbor_coord = {nx, ny};
+
+        // 检查邻居有效性
+        if (!isNodeValid(nx, ny, closed_set))
+        {
+          continue;
+        }
+
+        // 计算新代价
+        double new_g = current->g_cost + getMoveCost(current->x, current->y, nx, ny);
+        if (g_costs.count(neighbor_coord) && new_g >= g_costs[neighbor_coord])
+        {
+          continue;  // 已有更优路径
+        }
+
+        // 更新代价并加入开放集
+        double h = calculateHeuristic(nx, ny, goal_x, goal_y);
+        auto neighbor_node = std::make_shared<AStarNode>(nx, ny, new_g, h, current);
+        open_set.push(neighbor_node);
+        g_costs[neighbor_coord] = new_g;
+      }
+    }
+
+    // 构建路径
+    if (!goal_node)
+    {
+      RCLCPP_WARN(logger_, "No path found from start to goal");
+      return path;
+    }
+
+    // 回溯路径
+    std::vector<NodePtr> raw_path;
+    for (auto node = goal_node; node != nullptr; node = node->parent)
+    {
+      raw_path.push_back(node);
+    }
+    std::reverse(raw_path.begin(), raw_path.end());
+
+    // 转换为ROS路径消息
+    for (const auto& node : raw_path)
+    {
+      path.poses.push_back(gridToWorld(node->x, node->y));
+    }
+
+    // 路径平滑
+    path = smoothPath(path);
+
+    RCLCPP_INFO(logger_, "Found path with %zu waypoints", path.poses.size());
+    return path;
+  }
+
+  double AStarPlanner::calculateHeuristic(int x1, int y1, int x2, int y2) const
+  {
+    double dx = x2 - x1;
+    double dy = y2 - y1;
+    return heuristic_weight_ * std::hypot(dx, dy) * costmap_->getResolution();
+  }
+
+  bool AStarPlanner::isNodeValid(
+      int x, int y,
+      const std::unordered_set<std::pair<int, int>, CoordHash>& closed_set) const
+  {
+    // 检查边界
+    if (x < 0 || x >= static_cast<int>(costmap_->getSizeInCellsX()) ||
+        y < 0 || y >= static_cast<int>(costmap_->getSizeInCellsY()))
     {
       return false;
     }
 
-    // 2. 检查是否已在关闭列表（已扩展过的节点）
-    std::string key = getNodeKey(x, y);
-    if (closed_set.find(key) != closed_set.end())
+    // 检查是否已访问
+    if (closed_set.count({x, y}))
     {
       return false;
     }
 
-    // 3. 检查格子代价（是否为障碍物/未知区域）
+    // 检查代价
     unsigned char cost = costmap_->getCost(x, y);
-    // 规则：代价>阈值 → 障碍物；未知区域（255）且不允许 → 无效
-    if (cost > cost_threshold_ || (cost == 255 && !allow_unknown_))
+    if (cost == nav2_costmap_2d::LETHAL_OBSTACLE)
     {
-      return false;
+      return false;  // 致命障碍物
+    }
+    if (!allow_unknown_ && cost == nav2_costmap_2d::NO_INFORMATION)
+    {
+      return false;  // 未知区域且不允许通过
+    }
+    if (cost > cost_threshold_)
+    {
+      return false;  // 超过代价阈值
     }
 
     return true;
   }
 
-  // -------------------------- 4. 实现网格坐标→世界坐标转换 --------------------------
-  geometry_msgs::msg::PoseStamped AStarPlanner::gridToWorld(int x, int y)
+  geometry_msgs::msg::PoseStamped AStarPlanner::gridToWorld(int x, int y) const
   {
-    geometry_msgs::msg::PoseStamped world_pose;
-    world_pose.header.frame_id = global_frame_;
-    world_pose.header.stamp = node_->now();
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header.frame_id = global_frame_;
+    pose.header.stamp = node_->now();
 
-    // 代价地图原点（世界坐标）：地图左下角的x/y坐标
-    double origin_x = costmap_->getOriginX();
-    double origin_y = costmap_->getOriginY();
-    // 网格分辨率（米/格子）
-    double resolution = costmap_->getResolution();
+    double wx, wy;
+    costmap_->mapToWorld(x, y, wx, wy);
+    pose.pose.position.x = wx;
+    pose.pose.position.y = wy;
+    pose.pose.position.z = 0.0;
+    pose.pose.orientation.w = 1.0;  // 默认朝向
 
-    // 世界坐标 = 原点坐标 + 网格坐标 * 分辨率（注意：y是行数，对应世界坐标的y轴）
-    world_pose.pose.position.x = origin_x + (x + 0.5) * resolution;  // +0.5是取格子中心
-    world_pose.pose.position.y = origin_y + (y + 0.5) * resolution;
-    world_pose.pose.position.z = 0.0;  // 2D规划，z=0
-
-    // 姿态：默认无旋转（单位四元数，x=y=z=0, w=1）
-    world_pose.pose.orientation.x = 0.0;
-    world_pose.pose.orientation.y = 0.0;
-    world_pose.pose.orientation.z = 0.0;
-    world_pose.pose.orientation.w = 1.0;
-
-    return world_pose;
+    return pose;
   }
 
-  // -------------------------- 5. 核心：实现createPlan()：A*路径搜索 --------------------------
-  nav_msgs::msg::Path AStarPlanner::createPlan(
-      const geometry_msgs::msg::PoseStamped& start,
-      const geometry_msgs::msg::PoseStamped& goal,
-      const std::function<bool()>& cancel_checker)
+  bool AStarPlanner::worldToGrid(const geometry_msgs::msg::PoseStamped& pose, int& mx, int& my) const
   {
-    nav_msgs::msg::Path global_path;  // 输出路径
-    global_path.header.frame_id = global_frame_;
-    global_path.header.stamp = node_->now();
-
-    // -------------------------- 第一步：检查坐标系一致性 --------------------------
-    if (start.header.frame_id != global_frame_ || goal.header.frame_id != global_frame_)
+    unsigned int ux, uy;
+    if (!costmap_->worldToMap(pose.pose.position.x, pose.pose.position.y, ux, uy))
     {
-      RCLCPP_ERROR(node_->get_logger(), "Start/Goal must be in %s frame!", global_frame_.c_str());
-      return global_path;
+      return false;
+    }
+    mx = static_cast<int>(ux);
+    my = static_cast<int>(uy);
+    return true;
+  }
+
+  std::vector<std::pair<int, int>> AStarPlanner::getNeighbors(int x, int y) const
+  {
+    return {
+        {x - 1, y - 1}, {x - 1, y}, {x - 1, y + 1}, {x, y - 1}, {x, y + 1}, {x + 1, y - 1}, {x + 1, y}, {x + 1, y + 1}};
+  }
+
+  double AStarPlanner::getMoveCost(int x1, int y1, int x2, int y2) const
+  {
+    double res = costmap_->getResolution();
+    int dx = std::abs(x2 - x1);
+    int dy = std::abs(y2 - y1);
+    return (dx == 1 && dy == 1) ? res * std::sqrt(2) : res;
+  }
+
+  nav_msgs::msg::Path AStarPlanner::smoothPath(const nav_msgs::msg::Path& raw_path) const
+  {
+    if (raw_path.poses.size() <= 2)
+    {
+      return raw_path;
     }
 
-    // -------------------------- 第二步：世界坐标→网格坐标转换 --------------------------
-    int start_x, start_y;  // 起点网格坐标
-    int goal_x, goal_y;    // 终点网格坐标
-    double resolution = costmap_->getResolution();
+    nav_msgs::msg::Path smoothed;
+    smoothed.header = raw_path.header;
+    smoothed.poses.push_back(raw_path.poses[0]);
 
-    // 代价地图的worldToMap()：将世界坐标（米）转换为网格坐标（整数）
-    if (!costmap_->worldToMap(start.pose.position.x, start.pose.position.y, start_x, start_y))
+    // 移除共线点
+    for (size_t i = 1; i < raw_path.poses.size() - 1; ++i)
     {
-      RCLCPP_ERROR(node_->get_logger(), "Start pose is out of costmap bounds!");
-      return global_path;
-    }
-    if (!costmap_->worldToMap(goal.pose.position.x, goal.pose.position.y, goal_x, goal_y))
-    {
-      RCLCPP_ERROR(node_->get_logger(), "Goal pose is out of costmap bounds!");
-      return global_path;
-    }
+      const auto& p = raw_path.poses[i - 1].pose.position;
+      const auto& c = raw_path.poses[i].pose.position;
+      const auto& n = raw_path.poses[i + 1].pose.position;
 
-    // 检查起点/终点是否为障碍物（若无效，直接返回空路径）
-    std::unordered_map<std::string, bool> empty_closed_set;
-    if (!isNodeValid(start_x, start_y, empty_closed_set) || !isNodeValid(goal_x, goal_y, empty_closed_set))
-    {
-      RCLCPP_ERROR(node_->get_logger(), "Start/Goal is in obstacle or unknown area!");
-      return global_path;
-    }
-
-    // -------------------------- 第三步：初始化A*搜索（开放列表/关闭列表） --------------------------
-    // 开放列表：优先队列（按F代价从小到大排序），存储待扩展的节点
-    std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<>> open_list;
-    // 关闭列表：哈希表（存储已扩展的节点，避免重复访问）
-    std::unordered_map<std::string, bool> closed_set;
-    // 节点指针列表：用于后续内存释放（避免内存泄漏）
-    std::vector<AStarNode*> node_list;
-
-    // 初始化起点节点（G=0，H=启发函数，父节点=nullptr）
-    AStarNode* start_node = new AStarNode(
-        start_x, start_y,
-        0.0,                                                   // G代价：起点到自身的距离为0
-        calculateHeuristic(start_x, start_y, goal_x, goal_y),  // H代价
-        nullptr                                                // 父节点
-    );
-    open_list.push(*start_node);
-    node_list.push_back(start_node);
-
-    // 8个搜索方向（上下左右+对角线，可改为4方向减少路径拐点）
-    const std::vector<std::pair<int, int>> directions = {
-        {0, 1}, {1, 0}, {0, -1}, {-1, 0},  // 上下左右
-        {1, 1},
-        {1, -1},
-        {-1, 1},
-        {-1, -1}  // 对角线
-    };
-    double diagonal_cost = resolution * std::sqrt(2);  // 对角线移动的代价（米）
-    double straight_cost = resolution;                 // 直线移动的代价（米）
-
-    // -------------------------- 第四步：A*核心搜索循环 --------------------------
-    bool goal_found = false;
-    AStarNode* goal_node = nullptr;
-
-    while (!open_list.empty() && !cancel_checker())
-    {  // cancel_checker：检查是否取消导航
-      // 1. 取出开放列表中F代价最小的节点（当前最优节点）
-      AStarNode current_node = open_list.top();
-      open_list.pop();
-
-      // 2. 检查当前节点是否为终点（若到达，跳出循环）
-      if (current_node.x == goal_x && current_node.y == goal_y)
+      double cross = (c.x - p.x) * (n.y - c.y) - (c.y - p.y) * (n.x - c.x);
+      if (std::abs(cross) > 1e-6)  // 非共线点保留
       {
-        goal_found = true;
-        // 复制终点节点（优先队列存储的是副本，需从node_list中找原指针）
-        for (auto& node : node_list)
-        {
-          if (node->x == goal_x && node->y == goal_y && node->f_cost == current_node.f_cost)
-          {
-            goal_node = node;
-            break;
-          }
-        }
-        break;
-      }
-
-      // 3. 检查当前节点是否已在关闭列表（若已存在，跳过）
-      std::string current_key = getNodeKey(current_node.x, current_node.y);
-      if (closed_set.find(current_key) != closed_set.end())
-      {
-        continue;
-      }
-      // 将当前节点加入关闭列表（标记为已扩展）
-      closed_set[current_key] = true;
-
-      // 4. 扩展当前节点的8个邻居
-      for (const auto& dir : directions)
-      {
-        int neighbor_x = current_node.x + dir.first;
-        int neighbor_y = current_node.y + dir.second;
-
-        // 4.1 检查邻居节点是否合法（边界、障碍物、未扩展）
-        if (!isNodeValid(neighbor_x, neighbor_y, closed_set))
-        {
-          continue;
-        }
-
-        // 4.2 计算邻居节点的G代价（当前节点G + 移动代价）
-        double move_cost = (dir.first != 0 && dir.second != 0) ? diagonal_cost : straight_cost;
-        double neighbor_g = current_node.g_cost + move_cost;
-
-        // 4.3 计算邻居节点的H代价和F代价
-        double neighbor_h = calculateHeuristic(neighbor_x, neighbor_y, goal_x, goal_y);
-        double neighbor_f = neighbor_g + neighbor_h;
-
-        // 4.4 创建邻居节点并加入开放列表
-        AStarNode* neighbor_node = new AStarNode(neighbor_x, neighbor_y, neighbor_g, neighbor_h, &current_node);
-        open_list.push(*neighbor_node);
-        node_list.push_back(neighbor_node);
+        smoothed.poses.push_back(raw_path.poses[i]);
       }
     }
 
-    // -------------------------- 第五步：回溯路径（从终点→起点） --------------------------
-    if (goal_found && goal_node != nullptr)
-    {
-      std::vector<geometry_msgs::msg::PoseStamped> path_poses;
-      AStarNode* current_backtrack = goal_node;
-
-      // 回溯：从终点遍历到起点
-      while (current_backtrack != nullptr)
-      {
-        // 网格坐标→世界坐标
-        geometry_msgs::msg::PoseStamped pose = gridToWorld(current_backtrack->x, current_backtrack->y);
-        path_poses.push_back(pose);
-        // 移动到父节点
-        current_backtrack = current_backtrack->parent;
-      }
-
-      // 反转路径（起点→终点）
-      std::reverse(path_poses.begin(), path_poses.end());
-      // 将路径加入输出消息
-      global_path.poses = path_poses;
-      RCLCPP_INFO(node_->get_logger(), "A* Path found! Total waypoints: %lu", path_poses.size());
-    }
-    else
-    {
-      RCLCPP_WARN(node_->get_logger(), "A* Path not found!");
-    }
-
-    // -------------------------- 第六步：释放节点内存（避免内存泄漏） --------------------------
-    for (auto& node : node_list)
-    {
-      delete node;
-    }
-
-    return global_path;
+    smoothed.poses.push_back(raw_path.poses.back());
+    return smoothed;
   }
 
 }  // namespace nav2_astar_planner
 
-// -------------------------- 导出A*插件（关键：让Nav2能加载） --------------------------
+// 注册为Nav2全局规划器插件
 PLUGINLIB_EXPORT_CLASS(nav2_astar_planner::AStarPlanner, nav2_core::GlobalPlanner)

@@ -175,7 +175,7 @@ local_costmap:
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.5
+        inflation_radius: 0.3
         cost_scaling_factor: 5.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -263,7 +263,7 @@ global_costmap:
         transform_tolerance: 0.1
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.5
+        inflation_radius: 0.3
         cost_scaling_factor: 5.0
       always_send_full_costmap: true
 
@@ -280,13 +280,17 @@ map_saver:
 
 planner_server:
   ros__parameters:
-    expected_planner_frequency: 10.0
-    planner_plugins: ["GridBased"]
+    expected_planner_frequency: 10.0  
+    planner_plugins: ["GridBased"]    
     GridBased:
-      plugin: "nav2_navfn_planner::NavfnPlanner"
-      tolerance: 0.5
-      use_astar: false
-      allow_unknown: true
+      plugin: "nav2_astar_planner::AStarPlanner"
+      
+      allow_unknown: true 
+      tolerance: 0.5      
+
+      heuristic_weight: 1.0          # 启发函数权重（1.0为标准A*，>1.0更偏向贪心，<1.0更偏向Dijkstra）
+      inflation_radius: 0.3          # 膨胀半径（需与costmap的inflation_radius一致，避免碰撞）
+      cost_threshold: 250            # 可通行的最大代价（超过此值的区域视为障碍物，范围0-255）
 
 behavior_server:
   ros__parameters:
