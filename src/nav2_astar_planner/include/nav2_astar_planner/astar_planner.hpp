@@ -59,6 +59,9 @@ namespace nav2_astar_planner
     AStarPlanner(const AStarPlanner&) = delete;
     AStarPlanner& operator=(const AStarPlanner&) = delete;
 
+    // 允许测试辅助类访问私有成员和方法
+    friend class AStarPlannerTestHelper;
+
     // 初始化配置
     void configure(
         const rclcpp_lifecycle::LifecycleNode::WeakPtr& parent,

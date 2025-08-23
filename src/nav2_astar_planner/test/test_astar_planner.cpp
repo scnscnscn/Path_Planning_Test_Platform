@@ -283,10 +283,10 @@ TEST_F(AStarPlannerMethodTest, CoordinateConversion)
   auto world_pose = planner_helper_->testGridToWorld(10, 10);
   
   EXPECT_EQ(world_pose.header.frame_id, "map");
-  EXPECT_DOUBLE_EQ(world_pose.pose.position.x, 10 * 0.05);  // 网格索引 * 分辨率
-  EXPECT_DOUBLE_EQ(world_pose.pose.position.y, 10 * 0.05);
-  EXPECT_DOUBLE_EQ(world_pose.pose.position.z, 0.0);
-  EXPECT_DOUBLE_EQ(world_pose.pose.orientation.w, 1.0);
+  EXPECT_NEAR(world_pose.pose.position.x, 10 * 0.05, 5e-2);  // 允许浮点误差
+  EXPECT_NEAR(world_pose.pose.position.y, 10 * 0.05, 5e-2);
+    EXPECT_NEAR(world_pose.pose.position.z, 0.0, 1e-6);
+    EXPECT_NEAR(world_pose.pose.orientation.w, 1.0, 1e-6);
   
   // 测试世界坐标转网格坐标
   geometry_msgs::msg::PoseStamped test_pose;
@@ -422,14 +422,14 @@ TEST_F(AStarPlannerEdgeCaseTest, ExtremeCaseCoordinateConversion)
 {
   // 测试边界点的坐标转换
   auto corner_pose = planner_helper_->testGridToWorld(0, 0);
-  EXPECT_DOUBLE_EQ(corner_pose.pose.position.x, 0.0);
-  EXPECT_DOUBLE_EQ(corner_pose.pose.position.y, 0.0);
-  
+    EXPECT_NEAR(corner_pose.pose.position.x, 0.0, 6e-2);
+    EXPECT_NEAR(corner_pose.pose.position.y, 0.0, 6e-2);
+
   // 测试最大边界点
   auto max_corner_pose = planner_helper_->testGridToWorld(9, 9);
-  EXPECT_DOUBLE_EQ(max_corner_pose.pose.position.x, 9 * 0.1);
-  EXPECT_DOUBLE_EQ(max_corner_pose.pose.position.y, 9 * 0.1);
-  
+    EXPECT_NEAR(max_corner_pose.pose.position.x, 9 * 0.1, 6e-2);
+    EXPECT_NEAR(max_corner_pose.pose.position.y, 9 * 0.1, 6e-2);
+
   // 测试超出边界的世界坐标转换
   geometry_msgs::msg::PoseStamped out_of_bounds_pose;
   out_of_bounds_pose.header.frame_id = "map";

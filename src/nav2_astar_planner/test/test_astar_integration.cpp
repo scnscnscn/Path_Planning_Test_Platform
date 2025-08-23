@@ -231,19 +231,20 @@ TEST_F(AStarPlannerIntegrationTest, HighCostAreaNavigation)
 TEST_F(AStarPlannerIntegrationTest, UnreachableGoal)
 {
   // 创建完全被障碍物包围的目标点
-  for (int x = 45; x <= 47; ++x)
+  // 让goal点为(46,46)，障碍物包围(46,46)
+  // 让goal点为(45,45)，障碍物包围(45,45)
+  for (int x = 44; x <= 46; ++x)
   {
-    for (int y = 45; y <= 47; ++y)
+    for (int y = 44; y <= 46; ++y)
     {
-      if (x != 46 || y != 46)  // 除了中心点，周围都是障碍物
+      if (x != 45 || y != 45)  // 除了中心点，周围都是障碍物
       {
         test_costmap_->setObstacle(x, y);
       }
     }
   }
-  
   auto start_pose = createPose(0.5, 0.5);
-  auto goal_pose = createPose(4.6, 4.6);  // 被包围的目标点
+  auto goal_pose = createPose(4.5, 4.5);  // (45,45)为中心
   
   int start_x, start_y, goal_x, goal_y;
   ASSERT_TRUE(planner_helper_->testWorldToGrid(start_pose, start_x, start_y));
@@ -257,9 +258,14 @@ TEST_F(AStarPlannerIntegrationTest, UnreachableGoal)
   // 但是周围都被阻挡了
   auto neighbors = planner_helper_->testGetNeighbors(goal_x, goal_y);
   int blocked_neighbors = 0;
+  std::cout << "Neighbors of goal (" << goal_x << "," << goal_y << "):\n";
   for (const auto& neighbor : neighbors)
   {
-    if (!planner_helper_->testIsNodeValid(neighbor.first, neighbor.second, empty_closed))
+    unsigned char cost = test_costmap_->getCost(neighbor.first, neighbor.second);
+    bool valid = planner_helper_->testIsNodeValid(neighbor.first, neighbor.second, empty_closed);
+    std::cout << "  (" << neighbor.first << "," << neighbor.second << ") cost=" << static_cast<int>(cost)
+              << ", valid=" << valid << std::endl;
+    if (!valid)
     {
       blocked_neighbors++;
     }
