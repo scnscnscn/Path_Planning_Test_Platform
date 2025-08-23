@@ -17,6 +17,7 @@ namespace nav2_astar_planner
     planner_name_ = name;
     tf_ = tf;
     costmap_ros_ = costmap_ros;
+
     costmap_ = costmap_ros_->getCostmap();
     global_frame_ = costmap_ros_->getGlobalFrameID();
     clock_ = node_->get_clock();

@@ -55,6 +55,10 @@ namespace nav2_astar_planner
     AStarPlanner() = default;
     ~AStarPlanner() = default;
 
+    // 禁用拷贝构造函数和赋值操作符以防止不必要的复制
+    AStarPlanner(const AStarPlanner&) = delete;
+    AStarPlanner& operator=(const AStarPlanner&) = delete;
+
     // 初始化配置
     void configure(
         const rclcpp_lifecycle::LifecycleNode::WeakPtr& parent,
