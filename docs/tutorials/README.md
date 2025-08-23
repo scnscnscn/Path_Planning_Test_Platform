@@ -48,6 +48,17 @@ Build your own path planning algorithm and integrate it with the platform.
 4. Performance benchmarking
 5. Documentation requirements
 
+**Reference Implementation:**
+- See [nav2_astar_planner](../src/nav2_astar_planner/) for a complete working example
+- Full development guide available in [Development Documentation](../docs/development/README.md#navigation-planner-plugin-development)
+
+**Key Learning Objectives:**
+- Understand the `nav2_core::GlobalPlanner` interface
+- Learn proper ROS2 plugin architecture
+- Implement A* algorithm or other planning approaches
+- Handle costmap integration and coordinate transformations
+- Add comprehensive error handling and logging
+
 **Code example structure:**
 ```cpp
 class MyCustomPlanner : public PlannerBase 
