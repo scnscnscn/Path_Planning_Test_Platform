@@ -2,6 +2,9 @@
 
 Welcome to the Path Planning Test Platform tutorials! This section provides step-by-step guides for using and extending the platform.
 
+## Quick Start
+- **[A* Planner Usage Guide](astar_planner_usage.md)** - Complete guide for using and configuring the custom A* global planner
+
 ## Getting Started Tutorials
 
 ### 1. Basic Setup and Installation
