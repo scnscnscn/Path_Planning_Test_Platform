@@ -280,29 +280,59 @@ namespace nav2_astar_planner
 
   nav_msgs::msg::Path AStarPlanner::smoothPath(const nav_msgs::msg::Path& raw_path) const
   {
-    if (raw_path.poses.size() <= 2)
+    // 三次B样条平滑路径
+    if (raw_path.poses.size() <= 3)
     {
       return raw_path;
     }
 
     nav_msgs::msg::Path smoothed;
     smoothed.header = raw_path.header;
-    smoothed.poses.push_back(raw_path.poses[0]);
 
-    // 移除共线点
-    for (size_t i = 1; i < raw_path.poses.size() - 1; ++i)
+    const double step = 0.05; // 更小步长，提升平滑度
+    size_t n = raw_path.poses.size();
+
+    // B样条基函数
+    auto bspline = [](double t, double p0, double p1, double p2, double p3) {
+      double t2 = t * t;
+      double t3 = t2 * t;
+      return (
+        (-t3 + 3 * t2 - 3 * t + 1) * p0 +
+        (3 * t3 - 6 * t2 + 4) * p1 +
+        (-3 * t3 + 3 * t2 + 3 * t + 1) * p2 +
+        (t3) * p3
+      ) / 6.0;
+    };
+
+    // 边界点扩展，首尾各补一个点
+    std::vector<geometry_msgs::msg::Pose> ctrl_pts;
+    ctrl_pts.reserve(n + 2);
+    ctrl_pts.push_back(raw_path.poses[0].pose); // 首点复制
+    for (size_t i = 0; i < n; ++i)
+      ctrl_pts.push_back(raw_path.poses[i].pose);
+    ctrl_pts.push_back(raw_path.poses[n - 1].pose); // 尾点复制
+
+    // B样条插值
+    for (size_t i = 0; i < n; ++i)
     {
-      const auto& p = raw_path.poses[i - 1].pose.position;
-      const auto& c = raw_path.poses[i].pose.position;
-      const auto& n = raw_path.poses[i + 1].pose.position;
-
-      double cross = (c.x - p.x) * (n.y - c.y) - (c.y - p.y) * (n.x - c.x);
-      if (std::abs(cross) > 1e-6)  // 非共线点保留
+      const auto& p0 = ctrl_pts[i].position;
+      const auto& p1 = ctrl_pts[i + 1].position;
+      const auto& p2 = ctrl_pts[i + 2].position;
+      const auto& p3 = ctrl_pts[i + 3].position;
+      for (double t = 0; t < 1.0; t += step)
       {
-        smoothed.poses.push_back(raw_path.poses[i]);
+        double x = bspline(t, p0.x, p1.x, p2.x, p3.x);
+        double y = bspline(t, p0.y, p1.y, p2.y, p3.y);
+        geometry_msgs::msg::PoseStamped pt;
+        pt.header = raw_path.header;
+        pt.pose.position.x = x;
+        pt.pose.position.y = y;
+        pt.pose.position.z = 0.0;
+        pt.pose.orientation.w = 1.0;
+        smoothed.poses.push_back(pt);
       }
     }
-
+    // 保证终点加入
     smoothed.poses.push_back(raw_path.poses.back());
     return smoothed;
   }

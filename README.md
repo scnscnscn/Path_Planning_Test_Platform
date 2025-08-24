@@ -102,8 +102,7 @@ rosdep install --from-paths . --ignore-src -r -y
 
 #### 1.1 启动 Gazebo 仿真
 ```bash
-ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
-```
+ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py use_sim_time:=True
 
 #### 1.2 启动 RViz2 可视化 (新终端)
 ```bash

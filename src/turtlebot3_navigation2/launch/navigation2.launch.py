@@ -35,7 +35,7 @@ def generate_launch_description():
         default=os.path.join(
             get_package_share_directory('turtlebot3_navigation2'),
             'map',
-            '/home/nerv/桌面/Path_Planning_Test_Platform/src/turtlebot3/turtlebot3_navigation2/map/map.yaml'))
+            'map.yaml'))
 
     param_file_name = TURTLEBOT3_MODEL + '.yaml'
     if ROS_DISTRO == 'humble':
