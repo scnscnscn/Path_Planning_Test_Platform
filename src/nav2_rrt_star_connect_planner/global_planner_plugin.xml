@@ -1,0 +1,8 @@
+<library path="nav2_rrt_star_connect_planner_plugin">
+    <class
+        type="nav2_rrt_star_connect_planner::RRTStarConnectPlanner"
+        base_class_type="nav2_core::GlobalPlanner"
+    >
+        <description>RRT* Connect Global Planner Plugin for Nav2 (supports obstacle avoidance)</description>
+    </class>
+</library>

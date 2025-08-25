@@ -289,28 +289,29 @@ namespace nav2_astar_planner
     nav_msgs::msg::Path smoothed;
     smoothed.header = raw_path.header;
 
-    const double step = 0.05; // 更小步长，提升平滑度
+    const double step = 0.05;  // 更小步长，提升平滑度
     size_t n = raw_path.poses.size();
 
     // B样条基函数
-    auto bspline = [](double t, double p0, double p1, double p2, double p3) {
+    auto bspline = [](double t, double p0, double p1, double p2, double p3)
+    {
       double t2 = t * t;
       double t3 = t2 * t;
       return (
-        (-t3 + 3 * t2 - 3 * t + 1) * p0 +
-        (3 * t3 - 6 * t2 + 4) * p1 +
-        (-3 * t3 + 3 * t2 + 3 * t + 1) * p2 +
-        (t3) * p3
-      ) / 6.0;
+                 (-t3 + 3 * t2 - 3 * t + 1) * p0 +
+                 (3 * t3 - 6 * t2 + 4) * p1 +
+                 (-3 * t3 + 3 * t2 + 3 * t + 1) * p2 +
+                 (t3)*p3) /
+             6.0;
     };
 
     // 边界点扩展，首尾各补一个点
     std::vector<geometry_msgs::msg::Pose> ctrl_pts;
     ctrl_pts.reserve(n + 2);
-    ctrl_pts.push_back(raw_path.poses[0].pose); // 首点复制
+    ctrl_pts.push_back(raw_path.poses[0].pose);  // 首点复制
     for (size_t i = 0; i < n; ++i)
       ctrl_pts.push_back(raw_path.poses[i].pose);
-    ctrl_pts.push_back(raw_path.poses[n - 1].pose); // 尾点复制
+    ctrl_pts.push_back(raw_path.poses[n - 1].pose);  // 尾点复制
 
     // B样条插值
     for (size_t i = 0; i < n; ++i)

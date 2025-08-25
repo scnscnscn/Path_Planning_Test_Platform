@@ -304,7 +304,7 @@ planner_server:
     use_sim_time: True
     planner_plugins: ["GridBased"]
     GridBased:
-      plugin: "nav2_astar_planner::AStarPlanner"
+      plugin: "nav2_rrt_star_connect_planner::RRTStarConnectPlanner"
       # plugin: "nav2_navfn_planner/NavfnPlanner"
       tolerance: 0.5
       use_astar: false
