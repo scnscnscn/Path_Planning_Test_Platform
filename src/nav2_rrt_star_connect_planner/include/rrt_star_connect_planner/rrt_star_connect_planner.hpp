@@ -1,15 +1,14 @@
 #ifndef NAV2_RRT_STAR_CONNECT_PLANNER__RRT_STAR_CONNECT_PLANNER_HPP_
 #define NAV2_RRT_STAR_CONNECT_PLANNER__RRT_STAR_CONNECT_PLANNER_HPP_
 
-
-#include <memory>                // 智能指针
-#include <cmath>                 // 数学函数
-#include <string>                // 字符串
-#include <vector>                // 向量容器
-#include <utility>               // std::pair
-#include <random>                // 随机数
-#include <unordered_map>         // 哈希表
-#include <unordered_set>         // 哈希集合
+#include <memory>         // 智能指针
+#include <cmath>          // 数学函数
+#include <string>         // 字符串
+#include <vector>         // 向量容器
+#include <utility>        // std::pair
+#include <random>         // 随机数
+#include <unordered_map>  // 哈希表
+#include <unordered_set>  // 哈希集合
 
 #include "rclcpp_lifecycle/lifecycle_node.hpp"  // ROS2生命周期节点
 #include "nav2_core/global_planner.hpp"         // nav2全局规划器接口
@@ -19,7 +18,6 @@
 #include "nav_msgs/msg/path.hpp"                // 路径消息
 #include "visualization_msgs/msg/marker.hpp"    // RViz可视化标记
 #include "rclcpp/publisher.hpp"                 // ROS2发布器
-
 
 namespace nav2_rrt_star_connect_planner
 {
@@ -35,27 +33,26 @@ namespace nav2_rrt_star_connect_planner
     CONNECT2TO1 = 4,  ///< 连接第二棵树到第一棵树生成路径
   };
 
-
   /**
    * @brief RRT*节点结构体
    */
   struct RRTStarConnectNode
   {
-    double x;   ///< 节点x坐标
-    double y;   ///< 节点y坐标
-    double cost; ///< 从起点到当前节点的总代价
-    int node_id; ///< 节点唯一编号
-    int parent_id; ///< 父节点编号
-  /**
-   * @brief 构造函数
-   * @param x_ x坐标
-   * @param y_ y坐标
-   * @param c_ 代价
-   * @param node_id_ 节点编号
-   * @param parent_id_ 父节点编号
-   */
-  RRTStarConnectNode(double x_, double y_, double c_, int node_id_, int parent_id_)
-    : x(x_), y(y_), cost(c_), node_id(node_id_), parent_id(parent_id_) {}
+    double x;       ///< 节点x坐标
+    double y;       ///< 节点y坐标
+    double cost;    ///< 从起点到当前节点的总代价
+    int node_id;    ///< 节点唯一编号
+    int parent_id;  ///< 父节点编号
+    /**
+     * @brief 构造函数
+     * @param x_ x坐标
+     * @param y_ y坐标
+     * @param c_ 代价
+     * @param node_id_ 节点编号
+     * @param parent_id_ 父节点编号
+     */
+    RRTStarConnectNode(double x_, double y_, double c_, int node_id_, int parent_id_)
+        : x(x_), y(y_), cost(c_), node_id(node_id_), parent_id(parent_id_) {}
 
     /**
      * @brief 判断节点是否相等
@@ -70,7 +67,10 @@ namespace nav2_rrt_star_connect_planner
      */
     bool operator!=(const RRTStarConnectNode& node) const
     {
-      return !(*this == node);
+      if ((fabs(x - node.x) > 0.0001) || (fabs(y - node.y) > 0.0001) || (node_id != node.node_id) || (parent_id != node.parent_id) || (fabs(cost - node.cost) > 0.0001))
+        return true;
+      else
+        return false;
     }
   };
 
@@ -131,9 +131,9 @@ namespace nav2_rrt_star_connect_planner
      * @param costmap_ros 代价地图ROS包装器
      */
     void configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr& parent,
-                  std::string name,
-                  std::shared_ptr<tf2_ros::Buffer> tf,
-                  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros) override;
+                   std::string name,
+                   std::shared_ptr<tf2_ros::Buffer> tf,
+                   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros) override;
 
     /**
      * @brief 清理资源
@@ -292,7 +292,7 @@ namespace nav2_rrt_star_connect_planner
      * @param pathin 输入路径
      * @param param 插值参数
      */
-    void insertPointForPath(std::vector<std::pair<double, double> >& pathin, double param);
+    void insertPointForPath(std::vector<std::pair<double, double>>& pathin, double param);
 
     /**
      * @brief 路径优化（如去除冗余点，使路径更平滑）
@@ -300,7 +300,7 @@ namespace nav2_rrt_star_connect_planner
      * @param movement_angle_range 允许的运动角度范围
      * @return 优化后路径点数
      */
-    int optimizationPath(std::vector<std::pair<double, double> >& plan, double movement_angle_range = M_PI / 4);
+    int optimizationPath(std::vector<std::pair<double, double>>& plan, double movement_angle_range = M_PI / 4);
 
     /**
      * @brief 检查两点间的线段是否无障碍物
@@ -314,7 +314,33 @@ namespace nav2_rrt_star_connect_planner
      * @brief 裁剪路径中冗余的点（简化路径）
      * @param plan 路径点集合
      */
-    void cutPathPoint(std::vector<std::pair<double, double> >& plan);
+    void cutPathPoint(std::vector<std::pair<double, double>>& plan);
+
+    /**
+     * @brief 递归寻找避障安全路径
+     *
+     * 使用递归二分法在两点之间找到一条安全的路径
+     *
+     * @param start 起始点
+     * @param end 终点
+     * @param path 生成的路径点列表
+     * @param depth 递归深度，避免无限递归
+     * @return 是否找到安全路径
+     */
+    bool findSafePath(
+        const std::pair<double, double>& start,
+        const std::pair<double, double>& end,
+        std::vector<std::pair<double, double>>& path,
+        int depth);
+
+    /**
+     * @brief 平滑路径，减少摇摆
+     *
+     * 使用加权平均法平滑路径，避免锯齿状和摇摆
+     *
+     * @param path 需要平滑的路径
+     */
+    void smoothPath(std::vector<std::pair<double, double>>& path);
 
     /**
      * @brief 发布树的标记（用于RViz可视化）
@@ -325,37 +351,37 @@ namespace nav2_rrt_star_connect_planner
     void pubTreeMarker(rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub, const visualization_msgs::msg::Marker& marker, int id);
 
   private:
-    rclcpp_lifecycle::LifecycleNode::SharedPtr node_;             ///< 节点指针
-    std::shared_ptr<tf2_ros::Buffer> tf_;                         ///< TF缓冲区
-    std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;  ///< 代价地图ROS包装器
-    nav2_costmap_2d::Costmap2D* costmap_;                         ///< 代价地图指针
+    rclcpp_lifecycle::LifecycleNode::SharedPtr node_;                     ///< 节点指针
+    std::shared_ptr<tf2_ros::Buffer> tf_;                                 ///< TF缓冲区
+    std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;          ///< 代价地图ROS包装器
+    nav2_costmap_2d::Costmap2D* costmap_;                                 ///< 代价地图指针
     rclcpp::Logger logger_{rclcpp::get_logger("RRTStarConnectPlanner")};  ///< 日志
-    rclcpp::Clock::SharedPtr clock_;                              ///< 时钟
-    std::string planner_name_;                                    ///< 规划器名称
-    std::string global_frame_;                                    ///< 全局坐标系名称
+    rclcpp::Clock::SharedPtr clock_;                                      ///< 时钟
+    std::string planner_name_;                                            ///< 规划器名称
+    std::string global_frame_;                                            ///< 全局坐标系名称
 
-  visualization_msgs::msg::Marker marker_tree_;                 ///< 第一棵树可视化标记
-  visualization_msgs::msg::Marker marker_tree_2_;               ///< 第二棵树可视化标记
-  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_; ///< RViz标记发布器
+    visualization_msgs::msg::Marker marker_tree_;                               ///< 第一棵树可视化标记
+    visualization_msgs::msg::Marker marker_tree_2_;                             ///< 第二棵树可视化标记
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;  ///< RViz标记发布器
 
-    size_t max_nodes_num_;    ///< 最大节点数
-    double plan_time_out_;    ///< 规划超时时间
-    double search_radius_;    ///< 搜索半径
-    double goal_radius_;      ///< 目标区域半径
-    double epsilon_min_;      ///< 最小步长
-    double epsilon_max_;      ///< 最大步长
+    size_t max_nodes_num_;  ///< 最大节点数
+    double plan_time_out_;  ///< 规划超时时间
+    double search_radius_;  ///< 搜索半径
+    double goal_radius_;    ///< 目标区域半径
+    double epsilon_min_;    ///< 最小步长
+    double epsilon_max_;    ///< 最大步长
 
-    double path_point_spacing_; ///< 路径点间距
-    double angle_difference_;   ///< 允许的角度差
+    double path_point_spacing_;  ///< 路径点间距
+    double angle_difference_;    ///< 允许的角度差
 
-    double resolution_;         ///< 地图分辨率
-    bool initialized_;          ///< 是否已初始化
+    double resolution_;  ///< 地图分辨率
+    bool initialized_;   ///< 是否已初始化
     bool allow_unknown_;
 
-  std::random_device rd_;     ///< 随机数设备
-  std::mt19937 gen_;          ///< 随机数生成器
-  std::uniform_int_distribution<> int_dist_;   ///< 整数分布
-  std::uniform_real_distribution<> real_dist_; ///< 浮点数分布
+    std::random_device rd_;                       ///< 随机数设备
+    std::mt19937 gen_;                            ///< 随机数生成器
+    std::uniform_int_distribution<> int_dist_;    ///< 整数分布
+    std::uniform_real_distribution<> real_dist_;  ///< 浮点数分布
   };
 }  // namespace nav2_rrt_star_connect_planner
 
